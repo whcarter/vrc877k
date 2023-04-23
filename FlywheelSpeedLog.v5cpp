@@ -1,0 +1,116 @@
+#pragma region VEXcode Generated Robot Configuration
+// Make sure all required headers are included.
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <math.h>
+#include <string.h>
+
+
+#include "vex.h"
+
+using namespace vex;
+
+// Brain should be defined by default
+brain Brain;
+
+
+// START V5 MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
+// END V5 MACROS
+
+
+// Robot configuration code.
+controller Controller1 = controller(primary);
+motor mFLY = motor(PORT19, ratio6_1, false);
+
+motor mNDX = motor(PORT20, ratio36_1, true);
+
+
+
+
+// define variable for remote controller enable/disable
+bool RemoteControlCodeEnabled = true;
+#pragma endregion VEXcode Generated Robot Configuration
+
+/*----------------------------------------------------------------------------*/
+/*                                                                            */
+/*    Module:       FlywheelSpeedLog                                          */
+/*    Author:       Will Carter, Team 877K                                    */
+/*    Created:      1/1/2023                                                  */
+/*    Description:  Prints out flywheel speed and fires three disks           */
+/*                                                                            */
+/*----------------------------------------------------------------------------*/
+
+// Include the V5 Library
+#include "vex.h"
+  
+// Allows for easier use of the VEX Library
+using namespace vex;
+
+int targetVelocity = 0;
+void flywheelPID(){
+  float Kp = 0.00005;
+  float Ki = 0.0001;
+  float Kd = 0.04;
+  float integral = 0;
+  float previous_error = 0;
+  float flywheelPower = 0;
+
+  while (true) {
+    float error = targetVelocity - mFLY.velocity(rpm)*6;
+    integral = integral + error;
+    if (fabs(error) < 5) {
+      integral = 0;
+    }
+    if (fabs(integral) > 100.0) {
+      integral = 100 * (integral/fabs(integral));
+    }
+    float derivative = error - previous_error;
+    previous_error = error;
+    flywheelPower = flywheelPower + Kp*error + Ki*integral + Kd*derivative;
+    mFLY.spin(forward, flywheelPower, volt);
+    wait(10, msec);
+  }
+}
+
+void logFlywheelSpeed() {
+  thread flywheelThread = thread(flywheelPID);
+
+  mNDX.setPosition(0, degrees);
+  //mFLY.setVelocity(72, percent);
+  mNDX.setVelocity(99, percent);
+  //mFLY.spin(forward);
+  //mFLY.spin(forward, 8.64, volt);
+  targetVelocity = 2400;
+  
+  while(true) {
+    double currentTime = Brain.Timer.time(seconds);
+    
+    if(round(currentTime * 10) / 10 == 3.0 || round(currentTime * 10) / 10 == 5.0 || round(currentTime * 10) / 10 == 7.0) {
+      mNDX.setTimeout(1, seconds);
+      mNDX.spinToPosition(55, degrees);
+      mNDX.spinToPosition(-5, degrees, false);
+    }
+
+    double flywheelVelocity = mFLY.velocity(rpm);
+    printf("%.2f, %.1f\n", currentTime, flywheelVelocity);
+
+    if(floor(currentTime) == 10){
+      vexSystemExitRequest();
+    }
+    wait(0.1, seconds);
+  }
+}
+
+int main() {
+  //wait(2, seconds);
+  logFlywheelSpeed();
+}
+
