@@ -1,0 +1,862 @@
+#pragma region VEXcode Generated Robot Configuration
+// Make sure all required headers are included.
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <math.h>
+#include <string.h>
+
+
+#include "vex.h"
+
+using namespace vex;
+
+// Brain should be defined by default
+brain Brain;
+
+
+// START V5 MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
+// END V5 MACROS
+
+
+// Robot configuration code.
+triport Odom3Wire = triport(PORT7);
+motor mDFL = motor(PORT11, ratio18_1, false);
+
+motor mDFR = motor(PORT12, ratio18_1, true);
+
+motor mDBL = motor(PORT13, ratio18_1, false);
+
+motor mDBR = motor(PORT14, ratio18_1, true);
+
+gps holyBob = gps(PORT8, -88.90, -228.60, mm, 180);
+controller Controller1 = controller(primary);
+motor Motor17 = motor(PORT17, ratio6_1, false);
+
+motor mUPT = motor(PORT18, ratio6_1, false);
+
+motor mFLY = motor(PORT19, ratio6_1, false);
+
+motor mNDX = motor(PORT16, ratio36_1, true);
+
+/*vex-vision-config:begin*/
+vision::signature Vision1__BLUEHIGHGOAL = vision::signature (1, -2489, 1, -1244,135, 8291, 4213,0.8, 0);
+vision::signature Vision1__REDHIGHGOAL = vision::signature (2, 6363, 9617, 7990,-1207, -197, -702,3, 0);
+vision Vision1 = vision (PORT10, 50, Vision1__BLUEHIGHGOAL, Vision1__REDHIGHGOAL);
+/*vex-vision-config:end*/
+digital_out piston1 = digital_out(Brain.ThreeWirePort.A);
+digital_out piston2 = digital_out(Brain.ThreeWirePort.B);
+inertial Inertia = inertial(PORT9);
+
+encoder LeftOdom = encoder(Odom3Wire.A);
+encoder RightOdom = encoder(Odom3Wire.C);
+encoder FrontOdom = encoder(Odom3Wire.E);
+controller Controller2 = controller(partner);
+
+
+
+// define variable for remote controller enable/disable
+bool RemoteControlCodeEnabled = true;
+#pragma endregion VEXcode Generated Robot Configuration
+
+/*----------------------------------------------------------------------------*/
+/*                                                                            */
+/*    Module:       ExperimentalComp                                          */
+/*    Author:       Will Carter, Kayleen Smith, Team 877K                     */
+/*    Created:      12/12/2022                                                */
+/*    Description:  Driver-Control Competition Program                        */
+/*                                                                            */
+/*----------------------------------------------------------------------------*/
+
+// Include the V5 Library
+#include "vex.h"
+#include <iostream>
+  
+// Allows for easier use of the VEX Library
+using namespace vex;
+
+competition Competition = competition();
+
+bool porgUPT = false;  //A boolean variable (holds only the values of true or of false) that determines whether or not the intake system motor (mUPT) is on/at work
+//bool porgFLY = false;   //A boolean variable that determines whether or not the flywheel motor (mFLY) is on/at work
+bool drivePIDRunning = false;
+int targetVelocity = 0;
+int flywheelCooldown = 0;
+int intakeCooldown = 0;
+int pistonCooldown = 0;
+bool onBlueAlliance = false;
+bool onLeftSide = true;
+int autonNumber = 1;
+bool preauton = false;
+bool pistonExtended = false;
+float odomX = 0;
+float odomY = 0;
+float odomHeading = 0;
+float imuHeading = 0;
+int prepStep = 1;
+bool prepDone = false;
+
+
+void advancePrepStep() {
+  prepStep++;
+  Controller1.Screen.clearScreen();
+}
+
+void matchPrep() {
+  while (true) {
+    switch (prepStep) {
+      case 1:
+        Controller1.Screen.setCursor(1, 1);
+        Controller1.Screen.print("New Battery?");
+        Controller1.Screen.newLine();
+        Controller1.Screen.print("%d%s", Brain.Battery.capacity(), "%");
+        break;
+      case 2: 
+        Controller1.Screen.setCursor(1, 1);
+        Controller1.Screen.print("Pneumatics pumped?");
+        Controller1.Screen.newLine();
+        Controller1.Screen.print("Valve opened?");
+        break;
+      case 3:
+        Controller1.Screen.setCursor(1, 1);
+        Controller1.Screen.print("Strings loaded?");
+        Controller1.Screen.newLine();
+        Controller1.Screen.print("Rubber bands?");
+        break;
+      case 4:
+        Controller1.Screen.setCursor(1, 1);
+        if (onBlueAlliance) {
+          Controller1.Screen.print("Alliance: Blue");
+        } else {
+          Controller1.Screen.print("Alliance: Red ");
+        }
+        Controller1.Screen.newLine();
+        if (onLeftSide) {
+          Controller1.Screen.print("Auton Side: Left ");
+        } else {
+          Controller1.Screen.print("Auton Side: Right");
+        }
+        break;
+    }
+    if (prepStep < 5) {
+      Controller1.ButtonA.released(advancePrepStep);
+      Controller1.Screen.setCursor(3, 1);
+      Controller1.Screen.print("Press 'A' to continue");
+    } else {
+      Controller1.Screen.clearScreen();
+      prepDone = true;
+      vex::this_thread::sleep_for(1000000);
+    }
+    wait(100, msec);
+  }
+}
+
+void autonSelector() {
+  while (true) {
+    Brain.Screen.setFillColor(white);
+    Brain.Screen.setPenColor(black);
+    Brain.Screen.drawRectangle(260, 20, 200, 200);
+
+    Brain.Screen.setFillColor(blue);
+    Brain.Screen.drawCircle(285, 45, 12);
+    Brain.Screen.drawRectangle(293, 187, 100, 33);
+    Brain.Screen.drawRectangle(427, 87, 33, 66);
+    Brain.Screen.setPenColor(blue);
+    Brain.Screen.drawLine(393, 153, 427, 153);
+    Brain.Screen.drawLine(393, 153, 393, 187);
+
+    Brain.Screen.setPenColor(black);
+    Brain.Screen.setFillColor(red);
+    Brain.Screen.drawCircle(435, 195, 12);
+    Brain.Screen.drawRectangle(327, 20, 100, 33);
+    Brain.Screen.drawRectangle(260, 87, 33, 66);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.drawLine(327, 53, 327, 87);
+    Brain.Screen.drawLine(293, 87, 327, 87);
+
+    Brain.Screen.setPenColor(black);
+    Brain.Screen.setFillColor(green);
+    if (onBlueAlliance) {
+      if (onLeftSide) {
+        Brain.Screen.drawRectangle(293, 187, 100, 33);
+      } else {
+        Brain.Screen.drawRectangle(427, 87, 33, 66);
+      }
+    } else {
+      if (onLeftSide) {
+        Brain.Screen.drawRectangle(327, 20, 100, 33);
+      } else {
+        Brain.Screen.drawRectangle(260, 87, 33, 66);
+      }
+    }
+
+    if (Brain.Screen.pressing()) {
+      int brainX = Brain.Screen.xPosition();
+      int brainY = Brain.Screen.yPosition();
+      if (brainX >= 293 && brainX <= 393 && brainY >= 187 && brainY <= 220) {
+        onBlueAlliance = true;
+        onLeftSide = true;
+      } else if (brainX >= 427 && brainX <= 460 && brainY >= 87 && brainY <= 120) {
+        onBlueAlliance = true;
+        onLeftSide = false;
+      } else if (brainX >= 327 && brainX <= 427 && brainY >= 20 && brainY <= 53) {
+        onBlueAlliance = false;
+        onLeftSide = true;
+      } else if (brainX >= 260 && brainX <= 293 && brainY >= 87 && brainY <= 153) {
+        onBlueAlliance = false;
+        onLeftSide = false;
+      }
+    }
+
+
+    if (prepDone) {
+      vex::this_thread::sleep_for(1000000);
+    }
+    wait(10, msec);
+  }
+}
+
+//Converts robot-centric coordinates to field-centric
+float localToGlobalCoords(float localX, float localY, float robotHeading, bool returnX = true) {
+  float headingTraveled = robotHeading;
+  float distanceTraveled = sqrt(pow(localX, 2) + pow(localY, 2));
+  //printf("%f\n", distanceTraveled);
+  if (localX >= 0 && localY > 0) {
+    headingTraveled = (M_PI/2) - (robotHeading + (M_PI/2) - fabs(atan(localY / localX)));
+  } else if (localX > 0 && localY <= 0) {
+    headingTraveled = (M_PI/2) - (robotHeading + (M_PI/2) + fabs(atan(localY / localX)));
+  } else if (localX <= 0 && localY < 0) {
+    headingTraveled = (M_PI/2) - (robotHeading + (3*M_PI/2) - fabs(atan(localY / localX)));
+  } else if (localX < 0 && localY >= 0) {
+    headingTraveled = (M_PI/2) - (robotHeading + (3*M_PI/2) + fabs(atan(localY / localX)));
+  } 
+  while (headingTraveled >= 2*M_PI) {
+    headingTraveled -= 2*M_PI;
+  } 
+  while (headingTraveled < 0) {
+    headingTraveled += 2*M_PI;
+  }
+
+  float globalX = distanceTraveled * cos(headingTraveled);
+  float globalY = distanceTraveled * sin(headingTraveled);
+
+  //printf("X position: %f\nY position: %f\n", globalX, globalY);
+
+  if (returnX) {
+    return globalX;
+  } else {
+    return globalY;
+  }
+}
+
+//Converts field-centric coordinates to robot-centric
+float globalToLocalCoords(float globalX, float globalY, float robotX, float robotY, float robotHeading, bool returnX = true) {
+  float globalXDist = globalX - robotX;
+  float globalYDist = globalY - robotY;
+  float straightDist = sqrt(pow(globalXDist, 2) + pow(globalYDist, 2));
+  float angleToTarget = 0;
+
+  if (globalXDist >= 0 && globalYDist > 0) {          //Quadrant 1
+    angleToTarget = fabs(atan(globalYDist / globalXDist)) + robotHeading;
+  } else if (globalXDist > 0 && globalYDist <= 0) {   //Quadrant 4
+    //printf("%f\n", fabs(atan(globalYDist / globalXDist)));
+    angleToTarget = 2*M_PI - fabs(atan(globalYDist / globalXDist)) + robotHeading;
+  } else if (globalXDist <= 0 && globalYDist < 0) {   //Quadrant 3
+    angleToTarget = M_PI + fabs(atan(globalYDist / globalXDist)) - robotHeading;
+  } else if (globalXDist < 0 && globalYDist >= 0) {   //Quadrant 2
+    angleToTarget = M_PI - fabs(atan(globalYDist / globalXDist)) + robotHeading;
+  } 
+
+  float localX = straightDist * cos(angleToTarget);
+  float localY = straightDist * sin(angleToTarget);
+  //printf("%f\n", angleToTarget);
+
+  //printf("localX: %f\nlocalY: %f\n", localX, localY);
+
+  if (returnX) {
+    return localX;
+  } else {
+    return localY;
+  }
+}
+
+//Calculates the current position and heading of the robot based on movement tracking wheels
+void odometry() {
+  float leftOffset = 2.43;   //distance from left tracking wheel to tracking center
+  float rightOffset = 2.43;
+  float frontOffset = 0;
+  LeftOdom.setPosition(0, turns);
+  RightOdom.setPosition(0, turns);
+  FrontOdom.setPosition(0, turns);
+  float previousHeading = 0;
+  float trackingX = 0;
+  float trackingY = 0;
+  
+  while (true) {
+    if(Inertia.isCalibrating()){
+      printf("Calibrating\n");
+      wait(100, msec);
+      continue;
+    }
+    float leftOdomDist = LeftOdom.position(turns) * (2.75 * M_PI) * -1;   //distance traveled by left tracking wheel since last poll
+    float rightOdomDist = RightOdom.position(turns) * (2.75 * M_PI);
+    float frontOdomDist = FrontOdom.position(turns) * (2.75 * M_PI) * -1;
+
+    imuHeading = Inertia.heading(degrees) * (M_PI/180);
+    float theta = imuHeading - previousHeading;
+    //printf("IMU Heading: %f\n", imuHeading);
+
+    float localXDist = 0;
+    float localYDist = 0;
+    if (theta != 0) {
+      localXDist = 2 * (frontOdomDist / theta + frontOffset) * (sin(theta / 2));
+      localYDist = (leftOdomDist + rightOdomDist) / theta * (sin(theta / 2));
+    } else {
+      localXDist = frontOdomDist;
+      localYDist = (rightOdomDist + leftOdomDist) / 2;
+    }
+
+    trackingX += localToGlobalCoords(localXDist, localYDist, imuHeading, true);
+    trackingY += localToGlobalCoords(localXDist, localYDist, imuHeading, false);
+
+    odomX = trackingX + localToGlobalCoords(rightOffset - leftOffset, frontOffset, imuHeading, true);
+    odomY = trackingY + localToGlobalCoords(rightOffset - leftOffset, frontOffset, imuHeading, false);
+
+    //printf("X position: %f\nY position: %f\n", odomX, odomY);
+
+    LeftOdom.setPosition(0, turns);
+    RightOdom.setPosition(0, turns);
+    FrontOdom.setPosition(0, turns);
+    previousHeading = imuHeading;
+    wait(100, msec);
+  }
+}
+
+//Turns robot to a specified heading (degrees)
+void odomTurnToHeading(float targetHeading, bool loop = true) {
+  float Kp = 0.8;
+  float Ki = 0.01;
+  float Kd = 0.1;
+  float integral = 0;
+  float previous_error = 0;
+  float endTime = Brain.Timer.time(seconds) + 2;
+  drivePIDRunning = true;
+
+  while (true) {
+    float robotHeading = Inertia.heading(degrees);
+    float error = robotHeading - targetHeading;
+    if (error > 180) {
+      error = -360 + error;
+    }
+    if (error < -180) {
+      error = 360 + error;
+    }
+    printf("%f\n", error);
+    integral = integral + error;
+    if (fabs(error) < 1){
+      integral = 0;
+    }
+    if (fabs(error) > 200) {
+      integral = 0;
+    }
+    /*if (fabs(error) + fabs(previous_error) < 1) {
+      break;
+    }*/
+    float derivative = error - previous_error;
+    previous_error = error;
+    float motorPower = Kp*error + Ki*integral + Kd*derivative;
+    if (motorPower > 0) {
+      mDFL.spin(reverse, fabs(motorPower), volt);
+      mDFR.spin(forward, fabs(motorPower), volt);
+      mDBL.spin(reverse, fabs(motorPower), volt);
+      mDBR.spin(forward, fabs(motorPower), volt);
+    } else if (motorPower < 0) {
+      mDFL.spin(forward, fabs(motorPower), volt);
+      mDFR.spin(reverse, fabs(motorPower), volt);
+      mDBL.spin(forward, fabs(motorPower), volt);
+      mDBR.spin(reverse, fabs(motorPower), volt);
+    }
+    if (!loop) break;
+    if (Brain.Timer.time(seconds) >= endTime) {
+      mDFL.stop();
+      mDFR.stop();
+      mDBL.stop();
+      mDBR.stop();
+      drivePIDRunning = false;
+      break;
+    }
+    if (Controller1.ButtonA.pressing()) {
+      drivePIDRunning = false;
+      break;
+    }
+    wait(10, msec);
+  }
+}
+
+void moveToPoint(float targetX = 0, float targetY = 0, bool loop = true) {
+  float Kp = 2.5;                   //   _____________
+  float Ki = 0.0000;                //  | X         Y |
+  float Kd = 0.00;                  //  |      ^      |
+  float integralX = 0;              //  |     /|\     |
+  float integralY = 0;              //  |      |      |
+  float previousErrorX = 0;         //  | Y         X |
+  float previousErrorY = 0;         //  |_____________|
+  float powerX = 0;
+  float powerY = 0;
+  // - (2*M_PI)*(imuHeading + M_PI/4 > 2*M_PI)
+  drivePIDRunning = true;
+
+  while (true) {
+    float adjustedHeading = imuHeading - (M_PI/4) + (2*M_PI)*(imuHeading + M_PI/4 > 2*M_PI);
+    float localXDist = globalToLocalCoords(targetX, targetY, odomX, odomY, adjustedHeading, true);
+    float localYDist = globalToLocalCoords(targetX, targetY, odomX, odomY, adjustedHeading, false);
+
+    float errorX = localXDist;
+    printf("errorX: %f\n", errorX);
+    integralX = integralX + errorX;
+    if (fabs(errorX) < 5) {
+      integralX = 0;
+    }
+    if (fabs(integralX) > 100.0) {
+      integralX = 100 * (integralX/fabs(integralX));
+    }
+    float derivativeX = errorX - previousErrorX;
+    previousErrorX = errorX;
+    powerX = Kp*errorX + Ki*integralX + Kd*derivativeX;
+    mDFL.spin(forward, powerX, volt);
+    mDBR.spin(forward, powerX, volt);
+
+    float errorY = localYDist;
+    printf("errorY: %f\n", errorY);
+    integralY = integralY + errorY;
+    if (fabs(errorY) < 5) {
+      integralY = 0;
+    }
+    if (fabs(integralY) > 100.0) {
+      integralY = 100 * (integralY/fabs(integralY));
+    }
+    float derivativeY = errorY - previousErrorY;
+    previousErrorY = errorY;
+    powerY = Kp*errorY + Ki*integralY + Kd*derivativeY;
+    mDFR.spin(forward, powerY, volt);
+    mDBL.spin(forward, powerY, volt);
+
+    if (!loop) break;
+    if (fabs(errorX) < 1.0 && fabs(errorY) < 1.0) {
+      drivePIDRunning = false;
+      break;
+    }
+    if (Controller1.ButtonA.pressing()) {
+      drivePIDRunning = false;
+      break;
+    }
+    wait(20, msec);
+  }
+}
+
+void moveAndTurn(float targetX, float targetY, float targetHeading) {
+  bool moveDone = false;
+  bool turnDone = false;
+  while (true) {
+    if (fabs(targetX - odomX) > 1.0 && fabs(targetY - odomY) > 1.0) {
+      moveToPoint(targetX, targetY, false);
+    } else moveDone = true;
+    if (fabs(targetHeading - Inertia.heading(degrees)) > 5) {
+      printf("done\n");
+      odomTurnToHeading(targetHeading, false);
+    } else turnDone = true;
+    if (moveDone && turnDone) {
+      drivePIDRunning = false;
+      break;
+    }
+  }
+}
+
+//Turns the robot generally toward an angle measure
+void turnRobot(int degreesClockwise, int motorSpeed) {
+  //Rotations number is rounded if I combine the two variables, not sure why
+  double rotationsCoefficient = (19 / 2.75) / 360; //(drivetrain diameter / wheel diameter) / 360 degrees
+  double wheelRotations = abs(degreesClockwise) * rotationsCoefficient;
+  
+  mDFL.setVelocity(motorSpeed, percent);
+  mDFR.setVelocity(motorSpeed, percent);
+  mDBL.setVelocity(motorSpeed, percent);
+  mDBR.setVelocity(motorSpeed, percent);
+  mDFL.setPosition(0, degrees);
+
+  while (fabs(mDFL.position(degrees)) / 360 < wheelRotations) {
+    if (degreesClockwise > 0) {
+      mDFL.spin(forward);
+      mDFR.spin(reverse);
+      mDBL.spin(forward);
+      mDBR.spin(reverse);
+    } else {
+      mDFL.spin(reverse);
+      mDFR.spin(forward);
+      mDBL.spin(reverse);
+      mDBR.spin(forward);
+    }
+    
+    wait(100, msec);
+  }
+  mDFL.stop();
+  mDFR.stop();
+  mDBL.stop();
+  mDBR.stop();
+}
+
+//Makes turns by proportional control from motor rotation input
+//Pretty useless/imprecise, I made it by accident and it should probably never be used
+void Pturn(int degreesClockwise){
+  //Rotations number is rounded if I combine the two variables, not sure why
+  float rotationsCoefficient = (19 / 2.75) / 360; //(drivetrain diameter / wheel diameter) / 360 degrees
+  float wheelRotations = degreesClockwise * rotationsCoefficient;
+  mDFL.setPosition(0, degrees);
+  float Kp = 10;
+  float error = wheelRotations - mDFL.position(degrees) / 360;
+
+  while (error > 0) {
+    float error = wheelRotations - mDFL.position(degrees) / 360;
+    float motorPower = fabs(error) * Kp;
+
+    if (error > 0) {
+      mDFL.spin(forward, motorPower, volt);
+      mDFR.spin(reverse, motorPower, volt);
+      mDBL.spin(forward, motorPower, volt);
+      mDBR.spin(reverse, motorPower, volt);
+    } else {
+      mDFL.spin(reverse, motorPower, volt);
+      mDFR.spin(forward, motorPower, volt);
+      mDBL.spin(reverse, motorPower, volt);
+      mDBR.spin(forward, motorPower, volt);
+    }
+    printf("%f, %f, %f, %f\n",wheelRotations, mDFL.position(degrees) / 360, error, motorPower);
+    wait(100, msec);
+  }
+  mDFL.stop();
+  mDFR.stop();
+  mDBL.stop();
+  mDBR.stop();
+}
+
+void flywheelPID(){
+  float Kp = 0.00005;
+  float Ki = 0.0001;
+  float Kd = 0.04;
+  float integral = 0;
+  float previous_error = 0;
+  float flywheelPower = 0;
+
+  while (true) {
+    float error = targetVelocity - mFLY.velocity(rpm)*6;
+    integral = integral + error;
+    if (fabs(error) < 5) {
+      integral = 0;
+    }
+    if (fabs(integral) > 100.0) {
+      integral = 100 * (integral/fabs(integral));
+    }
+    float derivative = error - previous_error;
+    previous_error = error;
+    flywheelPower = flywheelPower + Kp*error + Ki*integral + Kd*derivative;
+    mFLY.spin(forward, flywheelPower, volt);
+    wait(10, msec);
+  }
+}
+
+void visionSnapshot() {
+  if (onBlueAlliance) {
+    Vision1.takeSnapshot(Vision1__BLUEHIGHGOAL);
+  } else {
+    Vision1.takeSnapshot(Vision1__REDHIGHGOAL);
+  }
+}
+
+//Uses Vision sensor input and PID control to turn towards a high goal
+void turnToGoal() {
+  int targetPosition = 158;
+  float Kp = 0.08;
+  float Ki = 0.001;
+  float Kd = 0.5;
+  float integral = 0;
+  float previous_error = 0;
+  float endTime = Brain.Timer.time(seconds) + 2;
+  drivePIDRunning = true;
+
+  visionSnapshot();
+  if (Vision1.largestObject.exists){
+    float goalYCoordinate = 106 - Vision1.largestObject.centerY;
+    float angleToGoal = goalYCoordinate / 106 * 20.5 + 20;
+    float distanceToGoal = 11.2 / tan(angleToGoal * (3.14/180));
+    //printf("Y: %d\n", Vision1.largestObject.centerY);
+    //printf("Angle: %f\n", angleToGoal);
+    //printf("Distance: %f in.\n", distanceToGoal);
+    targetVelocity = int(sqrt(9.8*pow(distanceToGoal, 2) / (distanceToGoal - 19.75))*65);
+    //printf("Velocity: %d\n", targetVelocity);
+  }
+  
+  while (true) {
+    visionSnapshot();
+    if (Vision1.largestObject.exists) {
+      float error = targetPosition - Vision1.largestObject.centerX;
+      integral = integral + error;
+      if (fabs(error) < 1){
+        integral = 0;
+      }
+      if (fabs(error) > 200) {
+        integral = 0;
+      }
+      float derivative = error - previous_error;
+      previous_error = error;
+      float motorPower = Kp*error + Ki*integral + Kd*derivative;
+      if (motorPower > 0) {
+        mDFL.spin(reverse, fabs(motorPower), volt);
+        mDFR.spin(forward, fabs(motorPower), volt);
+        mDBL.spin(reverse, fabs(motorPower), volt);
+        mDBR.spin(forward, fabs(motorPower), volt);
+      } else if (motorPower < 0) {
+        mDFL.spin(forward, fabs(motorPower), volt);
+        mDFR.spin(reverse, fabs(motorPower), volt);
+        mDBL.spin(forward, fabs(motorPower), volt);
+        mDBR.spin(reverse, fabs(motorPower), volt);
+      }
+    } else {
+      mDFL.stop();
+      mDFR.stop();
+      mDBL.stop();
+      mDBR.stop();
+    }
+    if (Brain.Timer.time(seconds) >= endTime) {
+      mDFL.stop();
+      mDFR.stop();
+      mDBL.stop();
+      mDBR.stop();
+      drivePIDRunning = false;
+      break;
+    }
+    if (Controller1.ButtonA.pressing()) {
+      break;
+    }
+    wait(10, msec);
+  }
+}
+
+void toggleFlywheel() {
+  if (flywheelCooldown == 0) {
+    if(targetVelocity == 0) {
+      targetVelocity = 2000;
+    } else {
+      targetVelocity = 0;
+    }
+    //porgFLY = !porgFLY;
+    flywheelCooldown = 5;
+  }
+}
+
+void toggleIntake() {
+  if (intakeCooldown == 0) {
+    porgUPT = !porgUPT;
+    intakeCooldown = 5;
+  }
+}
+
+void togglePiston() {
+  if (pistonCooldown == 0) {
+    if (pistonExtended) {
+      piston1.set(false);
+      piston2.set(false);
+      pistonExtended = false;
+    } else {
+      piston1.set(true);
+      piston2.set(true);
+      pistonExtended = true;
+    }
+    pistonCooldown = 200;
+  }
+}
+
+void pushDisc() {
+  mNDX.setTimeout(1, seconds);
+  mNDX.spinToPosition(55, degrees);
+  mNDX.spinToPosition(-5, degrees, false);
+}
+
+void spinRoller() {
+  mUPT.setTimeout(1, seconds);;
+  Motor17.setTimeout(1, seconds);
+  mUPT.spinFor(forward, 400, degrees, false);
+  Motor17.spinFor(forward, 600, degrees, false);
+}
+
+void leftAuton() {
+  mDFL.setVelocity(50, percent);
+  mDFR.setVelocity(50, percent);
+  mDBL.setVelocity(50, percent);
+  mDBR.setVelocity(50, percent);
+
+  mDFL.spinFor(forward, 1, turns, false);
+  mDFR.spinFor(reverse, 1, turns, false);
+  mDBL.spinFor(reverse, 1, turns, false);
+  mDBR.spinFor(forward, 1, turns, true);
+
+  mDFR.spin(forward);
+  mDFL.spin(forward);
+  mDBR.spin(forward);
+  mDBL.spin(forward);
+
+  wait(500, msec);
+
+  mDFR.stop();
+  mDFL.stop();
+  mDBR.stop();
+  mDBL.stop();
+
+  mUPT.setVelocity(99, percent);
+  Motor17.setVelocity(99, percent);
+
+  mUPT.spinFor(reverse, 200, degrees, false);  //NOTE: last time this was tested was at 400, and that went way too far
+  Motor17.spinFor(reverse, 200, degrees, true);
+}
+
+/*void bigRightAuton() {
+  moveToPoint(35.1, -58.5);
+  getRoller();
+  turnToGoal();
+  targetVelocity = whatever;
+  pushDisc();
+  wait(500, msec);
+  pushDisc();
+  odomTurnToHeading(315);
+  toggleIntake();
+  targetVelocity = whatever;
+  moveToPoint(-23.4, 0);
+  toggleIntake();
+  turnToGoal();
+  pushDisc();
+  wait(500, msec);
+  pushDisc();
+  wait(500, msec);
+  pushDisc();
+}*/
+
+//Competition Functions
+void pre_auton() {
+  preauton = true;
+  //thread controllerUIThread = thread(matchPrep);
+  thread autonSelectorThread = thread(autonSelector);
+  if (prepDone) {
+    //controllerUIThread.interrupt();
+    autonSelectorThread.interrupt();
+  }
+}
+
+void autonomous() {
+  preauton = false;
+
+  if (onLeftSide) {
+    switch (autonNumber) {
+      case 1:
+        leftAuton();
+        break;
+    }
+  } else {
+    switch (autonNumber) {
+      case 1:
+
+        break;
+    }
+  }
+
+  wait(10000, msec);
+}
+
+void drivercontrol() {
+  preauton = false;
+  
+  mNDX.setPosition(0, degrees);
+  thread flywheelThread = thread(flywheelPID);
+  thread odometryThread = thread(odometry);
+
+  while(true) {
+    mDFL.setVelocity((Controller1.Axis3.position(percent))+(Controller1.Axis4.position(percent))+(Controller1.Axis1.position(percent)), percent);
+    mDFR.setVelocity((Controller1.Axis3.position(percent))-(Controller1.Axis4.position(percent))-(Controller1.Axis1.position(percent)), percent);
+    mDBL.setVelocity((Controller1.Axis3.position(percent))-(Controller1.Axis4.position(percent))+(Controller1.Axis1.position(percent)), percent);
+    mDBR.setVelocity((Controller1.Axis3.position(percent))+(Controller1.Axis4.position(percent))-(Controller1.Axis1.position(percent)), percent);
+
+    mDFR.spin(forward);
+    mDFL.spin(forward);
+    mDBR.spin(forward);
+    mDBL.spin(forward);
+
+    mFLY.setVelocity(72, percent);              //setting up the flywheel: it will always be on, except for when the emergency stop button is pressed
+    
+    Controller1.ButtonL1.pressed(toggleFlywheel);
+    /*if(porgFLY) {
+      mFLY.spin(forward);
+    }
+    else {
+      mFLY.stop();
+    }*/
+
+    mUPT.setVelocity(99, percent);              //setting up the intake system: it will be on after the intake button is pressed, and off before then
+    Motor17.setVelocity(99, percent);
+    Controller1.ButtonR1.pressed(toggleIntake);
+
+    Controller1.ButtonX.pressed(spinRoller);
+    if(porgUPT) {
+      mUPT.spin(forward);
+      Motor17.spin(forward);
+    }
+    else {
+      mUPT.stop();
+      Motor17.stop();
+    }
+    if(Controller1.ButtonDown.pressing()) {
+      mUPT.spin(reverse);
+      Motor17.spin(reverse);
+    }
+    
+    if (Controller1.ButtonL2.pressing() && Controller1.ButtonR2.pressing()){
+      togglePiston();
+    }
+
+    mNDX.setVelocity(99, percent);              //setting up the indexer: motor will be at rest except when button is pressed, where the indexer will quickly push a disc to the flywheel
+    Controller1.ButtonA.released(pushDisc);
+
+    Controller1.ButtonB.pressed(turnToGoal);
+    //Controller1.ButtonY.pressed(moveToPoint);
+    if(Controller1.ButtonY.pressing()) {
+      moveAndTurn(0, 0, 0);
+    }
+
+    while (drivePIDRunning) {
+      wait(10, msec);
+    }
+
+    if (intakeCooldown > 0) {
+      intakeCooldown--;
+    }
+    if (flywheelCooldown > 0) {
+      flywheelCooldown--;
+    }
+    if (pistonCooldown > 0) {
+      pistonCooldown--;
+    }
+
+    wait(2, msec);
+  }
+}
+
+int main() {
+  Competition.autonomous(autonomous);
+  Competition.drivercontrol(drivercontrol);
+  pre_auton();
+}
+
